@@ -1,28 +1,9 @@
-# AI Prompt Log
+# Prompt Log
 
-This file records the AI-assisted implementation history required by the assignment.
+This repository includes the requested word-for-word user-visible chat records in Markdown format.
 
-## 2026-05-14
+- Full visible transcript: [docs/CHAT_HISTORY_VERBATIM.md](docs/CHAT_HISTORY_VERBATIM.md)
+- Follow-up questions and selected answers: [docs/FOLLOW_UP_QUESTIONS.md](docs/FOLLOW_UP_QUESTIONS.md)
+- Implementation plan: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
 
-### User Request
-
-Implement an IAE Tugas 2 service-based assignment project for the Checkout & Order service using Laravel, MySQL, Docker, REST, GraphQL, Swagger/OpenAPI, API-key security, migrations, and tests.
-
-### Planning Decisions
-
-- Domain: e-commerce purchase flow.
-- Service responsibility: Checkout & Order.
-- Stack: Laravel + MySQL.
-- API key header: `X-IAE-KEY: 102022400268`.
-- Response wrapper: official Standard Integration Contract format with `status`, `message`, `data`, `meta`, and `errors`.
-- Docker app port: `8002`.
-- Docker MySQL host port: `33062`.
-- Shared Docker network: `iae-network`.
-
-### Implementation Notes
-
-- Created a standalone Laravel repository scaffold.
-- Added REST endpoints under `/api/v1`.
-- Added GraphQL order query at `/api/graphql`.
-- Added OpenAPI JSON and Swagger UI route.
-- Added Dockerfile, Docker Compose, `.env.example`, docs, migrations, models, and feature tests.
+Hidden system/developer instructions, internal tool calls, and command outputs are not part of the user-visible chat transcript.
