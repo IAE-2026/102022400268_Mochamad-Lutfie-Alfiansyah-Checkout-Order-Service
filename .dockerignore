@@ -1,0 +1,9 @@
+.env
+.git
+.github
+node_modules
+vendor
+storage/logs/*.log
+database/database.sqlite
+bootstrap/cache/*.php
+tests

@@ -1,0 +1,250 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Checkout & Order Service API",
+    "description": "IAE Tugas 2 Checkout & Order service for e-commerce purchase flow.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8002",
+      "description": "Docker local app"
+    }
+  ],
+  "security": [
+    {
+      "IaeApiKey": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "IaeApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-IAE-KEY"
+      }
+    },
+    "schemas": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "message": { "type": "string", "example": "Operation successful" },
+          "data": { "type": "object" },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "service_name": { "type": "string", "example": "Checkout-Order-Service" },
+              "api_version": { "type": "string", "example": "v1" }
+            }
+          }
+        }
+      },
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "error" },
+          "message": { "type": "string", "example": "Resource not found" },
+          "errors": { "nullable": true }
+        }
+      },
+      "CheckoutItemInput": {
+        "type": "object",
+        "required": ["product_id", "quantity", "price"],
+        "properties": {
+          "product_id": { "type": "integer", "example": 10 },
+          "quantity": { "type": "integer", "example": 2 },
+          "price": { "type": "number", "format": "float", "example": 150000 }
+        }
+      },
+      "CheckoutCreateRequest": {
+        "type": "object",
+        "required": ["user_id", "shipping_address", "payment_method", "items"],
+        "properties": {
+          "user_id": { "type": "integer", "example": 1 },
+          "cart_id": { "type": "string", "nullable": true, "example": "cart-001" },
+          "shipping_address": { "type": "string", "example": "Jl. Telekomunikasi No. 1, Bandung" },
+          "payment_method": { "type": "string", "enum": ["bank_transfer", "e_wallet", "credit_card", "cod"] },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CheckoutItemInput" }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/v1/checkouts": {
+      "get": {
+        "summary": "List checkouts",
+        "responses": {
+          "200": { "description": "Checkouts retrieved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiSuccess" } } } },
+          "401": { "description": "Invalid API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+        }
+      },
+      "post": {
+        "summary": "Create checkout",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CheckoutCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Checkout created" },
+          "422": { "description": "Validation failed" },
+          "502": { "description": "External service unavailable" }
+        }
+      }
+    },
+    "/api/v1/checkouts/{id}": {
+      "get": {
+        "summary": "Get checkout detail",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Checkout retrieved" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/v1/payment/methods": {
+      "get": {
+        "summary": "List payment methods",
+        "responses": { "200": { "description": "Payment methods retrieved" } }
+      }
+    },
+    "/api/v1/payments": {
+      "post": {
+        "summary": "Create payment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["checkout_id", "payment_method"],
+                "properties": {
+                  "checkout_id": { "type": "integer", "example": 1 },
+                  "payment_method": { "type": "string", "example": "bank_transfer" },
+                  "amount": { "type": "number", "nullable": true, "example": 300000 }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Payment created" }, "422": { "description": "Validation failed" } }
+      }
+    },
+    "/api/v1/payments/{id}": {
+      "get": {
+        "summary": "Get payment detail",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Payment retrieved" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/v1/payments/{id}/status": {
+      "get": {
+        "summary": "Get payment status",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Payment status retrieved" } }
+      }
+    },
+    "/api/v1/payments/confirm": {
+      "post": {
+        "summary": "Confirm payment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["payment_id"],
+                "properties": {
+                  "payment_id": { "type": "integer", "example": 1 },
+                  "status": { "type": "string", "enum": ["confirmed", "paid", "failed"], "example": "confirmed" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Payment confirmed" }, "409": { "description": "Invalid transition" } }
+      }
+    },
+    "/api/v1/orders": {
+      "get": {
+        "summary": "List orders",
+        "responses": { "200": { "description": "Orders retrieved" } }
+      },
+      "post": {
+        "summary": "Create order from confirmed checkout/payment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["checkout_id"],
+                "properties": {
+                  "checkout_id": { "type": "integer", "example": 1 },
+                  "payment_id": { "type": "integer", "nullable": true, "example": 1 }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Order created" }, "409": { "description": "Payment not confirmed or order exists" } }
+      }
+    },
+    "/api/v1/orders/{id}": {
+      "get": {
+        "summary": "Get order detail",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Order retrieved" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/v1/orders/{id}/status": {
+      "put": {
+        "summary": "Update order status",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["status"],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": ["pending_payment", "paid", "processing", "shipped", "delivered", "completed", "cancelled"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Order status updated" }, "422": { "description": "Validation failed" } }
+      }
+    },
+    "/api/graphql": {
+      "post": {
+        "summary": "GraphQL order query",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                  "query": { "type": "string", "example": "query { order(id: 1) { id invoice_number status total_amount } }" },
+                  "variables": { "type": "object", "nullable": true }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "GraphQL result" }, "400": { "description": "GraphQL error" } }
+      }
+    }
+  }
+}
