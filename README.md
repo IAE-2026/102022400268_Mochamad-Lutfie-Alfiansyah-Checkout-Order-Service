@@ -132,6 +132,42 @@ PRODUCT_STOCK_VALIDATION=true
 PRODUCT_STOCK_DEDUCTION=true
 ```
 
+## Tugas 3 Integrations
+
+The critical transaction for Tugas 3 is:
+
+```text
+POST /api/v1/orders
+```
+
+When enabled, this endpoint validates the SSO JWT, maps the user to local roles, sends the critical order transaction to the legacy SOAP audit service, stores the returned `ReceiptNumber`, and publishes an order event to RabbitMQ.
+
+```env
+IAE_TEAM_ID=TEAM-01
+IAE_CENTRAL_BASE_URL=https://iae-sso.virtualfri.id
+IAE_CENTRAL_API_KEY=KEY-MHS-343
+IAE_CENTRAL_TOKEN_URL=https://iae-sso.virtualfri.id/api/v1/auth/token
+
+SSO_ENABLED=true
+SSO_BASE_URL=https://iae-sso.virtualfri.id
+SSO_JWT_ALGORITHM=RS256
+SSO_JWKS_URL=https://iae-sso.virtualfri.id/api/v1/auth/jwks
+SSO_ROLE_CLAIM=role
+
+LEGACY_AUDIT_ENABLED=true
+LEGACY_AUDIT_ENDPOINT=https://iae-sso.virtualfri.id/soap/v1/audit
+LEGACY_AUDIT_ACTIVITY_NAME=CheckoutOrderCreated
+
+RABBITMQ_ENABLED=true
+RABBITMQ_PUBLISH_URL=https://iae-sso.virtualfri.id/api/v1/messages/publish
+RABBITMQ_EXCHANGE=iae.central.exchange
+RABBITMQ_ROUTING_KEY=checkout.order.created
+```
+
+With `SSO_ENABLED=true`, `POST /api/v1/orders` requires a Bearer JWT whose local role maps to `customer`, `system`, or `admin`.
+
+The SSO service in the assignment provides user tokens through `POST /api/v1/auth/token` and public RS256 keys through `GET /api/v1/auth/jwks`. The same central token is used as Bearer authentication for SOAP audit and central message publishing.
+
 ## Local Development
 
 ```bash

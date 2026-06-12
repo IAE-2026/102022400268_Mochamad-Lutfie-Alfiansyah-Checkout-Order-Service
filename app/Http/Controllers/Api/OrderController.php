@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Checkout;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Services\LegacyAuditClient;
+use App\Services\OrderEventPublisher;
 use App\Services\ProductStockClient;
 use App\Support\ApiResponse;
 use Illuminate\Http\Client\ConnectionException;
@@ -14,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 class OrderController extends Controller
 {
@@ -24,7 +27,12 @@ class OrderController extends Controller
         return ApiResponse::success('Orders retrieved successfully', $orders);
     }
 
-    public function store(Request $request, ProductStockClient $productStockClient): JsonResponse
+    public function store(
+        Request $request,
+        ProductStockClient $productStockClient,
+        LegacyAuditClient $legacyAuditClient,
+        OrderEventPublisher $orderEventPublisher,
+    ): JsonResponse
     {
         $validated = $request->validate([
             'checkout_id' => ['required', 'integer', 'exists:checkouts,id'],
@@ -48,13 +56,22 @@ class OrderController extends Controller
             return ApiResponse::error($exception->getMessage(), null, 502);
         }
 
-        $order = DB::transaction(function () use ($checkout, $payment): Order {
+        $invoiceNumber = $this->invoiceNumber();
+
+        try {
+            $auditReceiptNumber = $legacyAuditClient->submitOrderCreated($checkout, $payment, $invoiceNumber);
+        } catch (ConnectionException $exception) {
+            return ApiResponse::error($exception->getMessage(), null, 502);
+        }
+
+        $order = DB::transaction(function () use ($checkout, $payment, $invoiceNumber, $auditReceiptNumber): Order {
             $order = Order::create([
                 'checkout_id' => $checkout->id,
                 'user_id' => $checkout->user_id,
-                'invoice_number' => $this->invoiceNumber(),
+                'invoice_number' => $invoiceNumber,
                 'total_amount' => $checkout->total_amount,
                 'status' => 'paid',
+                'audit_receipt_number' => $auditReceiptNumber,
             ]);
 
             foreach ($checkout->items as $item) {
@@ -71,6 +88,12 @@ class OrderController extends Controller
 
             return $order->load('items', 'payment');
         });
+
+        try {
+            $orderEventPublisher->publishOrderCreated($order);
+        } catch (Throwable $exception) {
+            return ApiResponse::error($exception->getMessage(), null, 502);
+        }
 
         return ApiResponse::success('Order created successfully', $order, 201);
     }

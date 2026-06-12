@@ -1,0 +1,356 @@
+{
+  "info": {
+    "name": "Checkout Order Service - Tugas 3 IAE",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 - IAE Central - Get Warga Token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 2xx', function () {",
+              "  pm.expect(pm.response.code).to.be.within(200, 299);",
+              "});",
+              "const body = pm.response.json();",
+              "const token = body.access_token || body.token || (body.data && (body.data.access_token || body.data.token));",
+              "pm.test('central token exists', function () {",
+              "  pm.expect(token).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.environment.set('central_token', token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{warga_email}}\",\n  \"password\": \"{{warga_password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{iae_base_url}}/api/v1/auth/token",
+          "host": [
+            "{{iae_base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "token"
+          ]
+        }
+      }
+    },
+    {
+      "name": "02 - IAE Central - Direct SOAP Audit Check",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{central_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "text/xml; charset=utf-8"
+          },
+          {
+            "key": "SOAPAction",
+            "value": "SubmitOrderAudit"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:iae=\"http://iae.central/audit\">\n  <soap:Body>\n    <iae:AuditRequest>\n      <iae:TeamID>{{team_id}}</iae:TeamID>\n      <iae:ActivityName>CheckoutOrderCreatedPostmanCheck</iae:ActivityName>\n      <iae:LogContent><![CDATA[{\"source\":\"postman\",\"event\":\"checkout.order.created\",\"order_id\":\"POSTMAN-CHECK\"}]]></iae:LogContent>\n    </iae:AuditRequest>\n  </soap:Body>\n</soap:Envelope>"
+        },
+        "url": {
+          "raw": "{{iae_base_url}}/soap/v1/audit",
+          "host": [
+            "{{iae_base_url}}"
+          ],
+          "path": [
+            "soap",
+            "v1",
+            "audit"
+          ]
+        }
+      }
+    },
+    {
+      "name": "03 - IAE Central - Direct Message Publish Check",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{central_token}}"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"exchange\": \"iae.central.exchange\",\n  \"routing_key\": \"checkout.order.created\",\n  \"event\": \"checkout.order.created\",\n  \"message\": {\n    \"source\": \"postman\",\n    \"team_id\": \"{{team_id}}\",\n    \"order_id\": \"POSTMAN-CHECK\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{iae_base_url}}/api/v1/messages/publish",
+          "host": [
+            "{{iae_base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "messages",
+            "publish"
+          ]
+        }
+      }
+    },
+    {
+      "name": "04 - Local - Health Check",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{local_base_url}}/up",
+          "host": [
+            "{{local_base_url}}"
+          ],
+          "path": [
+            "up"
+          ]
+        }
+      }
+    },
+    {
+      "name": "05 - Local - Create Checkout",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('checkout created', function () {",
+              "  pm.expect(pm.response.code).to.equal(201);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.environment.set('checkout_id', body.data.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-IAE-KEY",
+            "value": "{{local_iae_key}}"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{central_token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": 1,\n  \"shipping_address\": \"Jl. Telekomunikasi No. 1, Bandung\",\n  \"payment_method\": \"bank_transfer\",\n  \"items\": [\n    {\n      \"product_id\": 10,\n      \"quantity\": 2,\n      \"price\": 150000\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{local_base_url}}/api/v1/checkouts",
+          "host": [
+            "{{local_base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "checkouts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "06 - Local - Create Payment",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('payment created', function () {",
+              "  pm.expect(pm.response.code).to.equal(201);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.environment.set('payment_id', body.data.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-IAE-KEY",
+            "value": "{{local_iae_key}}"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{central_token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"checkout_id\": {{checkout_id}},\n  \"payment_method\": \"bank_transfer\"\n}"
+        },
+        "url": {
+          "raw": "{{local_base_url}}/api/v1/payments",
+          "host": [
+            "{{local_base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "payments"
+          ]
+        }
+      }
+    },
+    {
+      "name": "07 - Local - Confirm Payment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-IAE-KEY",
+            "value": "{{local_iae_key}}"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{central_token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"payment_id\": {{payment_id}},\n  \"status\": \"confirmed\"\n}"
+        },
+        "url": {
+          "raw": "{{local_base_url}}/api/v1/payments/confirm",
+          "host": [
+            "{{local_base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "payments",
+            "confirm"
+          ]
+        }
+      }
+    },
+    {
+      "name": "08 - Local - Create Critical Order",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('order created', function () {",
+              "  pm.expect(pm.response.code).to.equal(201);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.environment.set('order_id', body.data.id);",
+              "pm.test('audit receipt stored when SOAP is enabled', function () {",
+              "  pm.expect(body.data.audit_receipt_number).to.exist;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-IAE-KEY",
+            "value": "{{local_iae_key}}"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{central_token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"checkout_id\": {{checkout_id}},\n  \"payment_id\": {{payment_id}}\n}"
+        },
+        "url": {
+          "raw": "{{local_base_url}}/api/v1/orders",
+          "host": [
+            "{{local_base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "orders"
+          ]
+        }
+      }
+    }
+  ]
+}

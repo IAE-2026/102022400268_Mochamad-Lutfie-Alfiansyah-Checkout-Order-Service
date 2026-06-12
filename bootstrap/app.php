@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'iae.key' => \App\Http\Middleware\EnsureIaeApiKey::class,
+            'sso.role' => \App\Http\Middleware\EnsureSsoRole::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

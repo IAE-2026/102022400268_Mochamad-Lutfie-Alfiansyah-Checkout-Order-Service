@@ -98,6 +98,8 @@ Returns all orders with items and payment.
 
 Creates an order from a checkout that has a confirmed or paid payment.
 
+When `SSO_ENABLED=true`, this endpoint requires a Bearer JWT whose local role maps to `customer`, `system`, or `admin`. JWT signatures are verified through the Cloud Dosen JWKS endpoint. When `LEGACY_AUDIT_ENABLED=true`, the service sends a SOAP XML `iae:AuditRequest` to `/soap/v1/audit` and stores the returned `ReceiptNumber` on the order. When `RABBITMQ_ENABLED=true`, the service publishes `checkout.order.created` through the central `/api/v1/messages/publish` endpoint.
+
 ```json
 {
   "checkout_id": 1,

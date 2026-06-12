@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/graphql', GraphQLController::class)->middleware('iae.key');
 
-Route::middleware('iae.key')->prefix('v1')->group(function (): void {
+Route::middleware(['iae.key', 'sso.role'])->prefix('v1')->group(function (): void {
     Route::get('/checkouts', [CheckoutController::class, 'index']);
     Route::post('/checkouts', [CheckoutController::class, 'store']);
     Route::get('/checkouts/{checkout}', [CheckoutController::class, 'show']);
@@ -21,7 +21,7 @@ Route::middleware('iae.key')->prefix('v1')->group(function (): void {
     Route::post('/payments/confirm', [PaymentController::class, 'confirm']);
 
     Route::get('/orders', [OrderController::class, 'index']);
-    Route::post('/orders', [OrderController::class, 'store']);
+    Route::post('/orders', [OrderController::class, 'store'])->middleware('sso.role:customer,system,admin');
     Route::get('/orders/{order}', [OrderController::class, 'show']);
     Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']);
 });

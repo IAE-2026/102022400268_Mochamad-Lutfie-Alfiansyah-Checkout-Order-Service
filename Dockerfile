@@ -2,11 +2,13 @@ FROM composer:2 AS vendor
 
 WORKDIR /app
 
-COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-interaction --prefer-dist --no-scripts --optimize-autoloader
-
 COPY . .
-RUN composer dump-autoload --optimize
+
+RUN composer install \
+    --no-dev \
+    --no-interaction \
+    --prefer-dist \
+    --optimize-autoloader
 
 FROM php:8.2-cli
 

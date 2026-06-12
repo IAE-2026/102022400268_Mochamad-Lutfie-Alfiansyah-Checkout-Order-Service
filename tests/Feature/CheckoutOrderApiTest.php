@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Support\Facades\Http;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -19,6 +20,10 @@ class CheckoutOrderApiTest extends TestCase
             'services.iae.api_version' => 'v1',
             'services.integrations.validate_stock' => false,
             'services.integrations.deduct_stock' => false,
+            'services.sso.enabled' => false,
+            'services.legacy_audit.enabled' => false,
+            'services.rabbitmq.enabled' => false,
+            'services.central.bearer_token' => null,
         ]);
     }
 
@@ -109,6 +114,221 @@ class CheckoutOrderApiTest extends TestCase
         ], $this->headers())
             ->assertOk()
             ->assertJsonPath('data.status', 'processing');
+    }
+
+    public function test_sso_jwt_is_mapped_to_local_role_for_critical_order_endpoint(): void
+    {
+        [$checkout, $payment] = $this->createConfirmedPayment();
+
+        config([
+            'services.sso.enabled' => true,
+            'services.sso.algorithm' => 'HS256',
+            'services.sso.jwt_secret' => 'sso-secret',
+            'services.sso.role_claim' => 'role',
+        ]);
+
+        $this->postJson('/api/v1/orders', [
+            'checkout_id' => $checkout['id'],
+            'payment_id' => $payment['id'],
+        ], $this->headers([
+            'Authorization' => 'Bearer '.$this->jwt([
+                'sub' => 'cloud-user-1',
+                'email' => 'system@example.test',
+                'name' => 'System Gateway',
+                'role' => 'system',
+                'exp' => now()->addMinutes(5)->timestamp,
+            ]),
+        ]))
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'paid');
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'system@example.test',
+            'sso_provider' => 'cloud-dosen',
+            'sso_subject' => 'cloud-user-1',
+        ]);
+
+        $this->assertDatabaseHas('roles', [
+            'code' => 'system',
+        ]);
+    }
+
+    public function test_sso_user_without_role_claim_defaults_to_customer_for_order_endpoint(): void
+    {
+        [$checkout, $payment] = $this->createConfirmedPayment();
+
+        config([
+            'services.sso.enabled' => true,
+            'services.sso.algorithm' => 'HS256',
+            'services.sso.jwt_secret' => 'sso-secret',
+            'services.sso.role_claim' => 'role',
+        ]);
+
+        $this->postJson('/api/v1/orders', [
+            'checkout_id' => $checkout['id'],
+            'payment_id' => $payment['id'],
+        ], $this->headers([
+            'Authorization' => 'Bearer '.$this->jwt([
+                'sub' => 'warga-40',
+                'email' => 'warga40@ktp.iae.id',
+                'name' => 'Warga 40',
+                'exp' => now()->addMinutes(5)->timestamp,
+            ]),
+        ]))
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'paid');
+
+        $this->assertDatabaseHas('roles', [
+            'code' => 'customer',
+        ]);
+    }
+
+    public function test_order_creation_sends_legacy_soap_audit_and_stores_receipt_number(): void
+    {
+        [$checkout, $payment] = $this->createConfirmedPayment();
+
+        config([
+            'services.legacy_audit.enabled' => true,
+            'services.legacy_audit.endpoint' => 'https://audit.example.test/soap',
+            'services.central.bearer_token' => 'central-token',
+            'services.iae.team_id' => 'TEAM-01',
+            'services.legacy_audit.activity_name' => 'CheckoutOrderCreated',
+        ]);
+
+        Http::fake([
+            'https://audit.example.test/soap' => Http::response(
+                '<soap:Envelope><soap:Body><SubmitOrderAuditResponse><ReceiptNumber>RCP-ORDER-001</ReceiptNumber></SubmitOrderAuditResponse></soap:Body></soap:Envelope>',
+                200,
+            ),
+        ]);
+
+        $order = $this->postJson('/api/v1/orders', [
+            'checkout_id' => $checkout['id'],
+            'payment_id' => $payment['id'],
+        ], $this->headers())
+            ->assertCreated()
+            ->assertJsonPath('data.audit_receipt_number', 'RCP-ORDER-001')
+            ->json('data');
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://audit.example.test/soap'
+            && $request->hasHeader('Authorization', 'Bearer central-token')
+            && str_contains($request->body(), '<iae:AuditRequest>')
+            && str_contains($request->body(), '<iae:TeamID>TEAM-01</iae:TeamID>')
+            && str_contains($request->body(), '<iae:ActivityName>CheckoutOrderCreated</iae:ActivityName>')
+            && str_contains($request->body(), '"transaction_type":"ORDER_CREATED"'));
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $order['id'],
+            'audit_receipt_number' => 'RCP-ORDER-001',
+        ]);
+    }
+
+    public function test_order_creation_falls_back_to_request_bearer_token_when_central_api_key_is_missing(): void
+    {
+        [$checkout, $payment] = $this->createConfirmedPayment();
+
+        config([
+            'services.legacy_audit.enabled' => true,
+            'services.legacy_audit.endpoint' => 'https://audit.example.test/soap',
+            'services.central.bearer_token' => null,
+            'services.central.api_key' => null,
+            'services.iae.team_id' => 'TEAM-01',
+            'services.legacy_audit.activity_name' => 'CheckoutOrderCreated',
+        ]);
+
+        Http::fake([
+            'https://audit.example.test/soap' => Http::response(
+                '<soap:Envelope><soap:Body><SubmitOrderAuditResponse><ReceiptNumber>RCP-REQUEST-TOKEN</ReceiptNumber></SubmitOrderAuditResponse></soap:Body></soap:Envelope>',
+                200,
+            ),
+        ]);
+
+        $this->postJson('/api/v1/orders', [
+            'checkout_id' => $checkout['id'],
+            'payment_id' => $payment['id'],
+        ], $this->headers([
+            'Authorization' => 'Bearer user-token-from-postman',
+        ]))
+            ->assertCreated()
+            ->assertJsonPath('data.audit_receipt_number', 'RCP-REQUEST-TOKEN');
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://audit.example.test/soap'
+            && $request->hasHeader('Authorization', 'Bearer user-token-from-postman'));
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_order_creation_uses_central_api_key_token_for_legacy_audit(): void
+    {
+        [$checkout, $payment] = $this->createConfirmedPayment();
+
+        config([
+            'services.legacy_audit.enabled' => true,
+            'services.legacy_audit.endpoint' => 'https://audit.example.test/soap',
+            'services.central.bearer_token' => null,
+            'services.central.api_key' => 'KEY-MHS-343',
+            'services.central.token_url' => 'https://iae.example.test/api/v1/auth/token',
+            'services.iae.team_id' => 'TEAM-01',
+            'services.legacy_audit.activity_name' => 'CheckoutOrderCreated',
+        ]);
+
+        Http::fake([
+            'https://iae.example.test/api/v1/auth/token' => Http::response([
+                'token' => 'machine-token',
+            ], 200),
+            'https://audit.example.test/soap' => Http::response(
+                '<soap:Envelope><soap:Body><SubmitOrderAuditResponse><ReceiptNumber>RCP-MACHINE-TOKEN</ReceiptNumber></SubmitOrderAuditResponse></soap:Body></soap:Envelope>',
+                200,
+            ),
+        ]);
+
+        $this->postJson('/api/v1/orders', [
+            'checkout_id' => $checkout['id'],
+            'payment_id' => $payment['id'],
+        ], $this->headers([
+            'Authorization' => 'Bearer user-token-from-postman',
+        ]))
+            ->assertCreated()
+            ->assertJsonPath('data.audit_receipt_number', 'RCP-MACHINE-TOKEN');
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://iae.example.test/api/v1/auth/token'
+            && $request['api_key'] === 'KEY-MHS-343');
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://audit.example.test/soap'
+            && $request->hasHeader('Authorization', 'Bearer machine-token'));
+    }
+
+    public function test_order_creation_publishes_order_event_to_central_message_endpoint(): void
+    {
+        [$checkout, $payment] = $this->createConfirmedPayment();
+
+        config([
+            'services.rabbitmq.enabled' => true,
+            'services.rabbitmq.publish_url' => 'https://iae.example.test/api/v1/messages/publish',
+            'services.rabbitmq.exchange' => 'iae.central.exchange',
+            'services.rabbitmq.routing_key' => 'checkout.order.created',
+            'services.central.bearer_token' => 'central-token',
+        ]);
+
+        Http::fake([
+            'https://iae.example.test/api/v1/messages/publish' => Http::response([
+                'status' => 'success',
+            ], 200),
+        ]);
+
+        $this->postJson('/api/v1/orders', [
+            'checkout_id' => $checkout['id'],
+            'payment_id' => $payment['id'],
+        ], $this->headers())
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'paid');
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://iae.example.test/api/v1/messages/publish'
+            && $request->hasHeader('Authorization', 'Bearer central-token')
+            && $request['exchange'] === 'iae.central.exchange'
+            && $request['routing_key'] === 'checkout.order.created'
+            && $request['event'] === 'checkout.order.created'
+            && $request['message']['data']['checkout_id'] === $checkout['id']);
     }
 
     public function test_validation_errors_and_missing_resources_use_contract_wrapper(): void
@@ -209,11 +429,32 @@ GRAPHQL,
     /**
      * @return array<string, string>
      */
-    private function headers(): array
+    private function headers(array $extra = []): array
     {
-        return [
+        return array_merge([
             'Accept' => 'application/json',
             'X-IAE-KEY' => 'test-key',
-        ];
+        ], $extra);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function jwt(array $payload): string
+    {
+        $header = $this->base64UrlEncode(json_encode([
+            'typ' => 'JWT',
+            'alg' => 'HS256',
+        ], JSON_THROW_ON_ERROR));
+
+        $body = $this->base64UrlEncode(json_encode($payload, JSON_THROW_ON_ERROR));
+        $signature = hash_hmac('sha256', "{$header}.{$body}", 'sso-secret', true);
+
+        return "{$header}.{$body}.".$this->base64UrlEncode($signature);
+    }
+
+    private function base64UrlEncode(string $value): string
+    {
+        return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
     }
 }
