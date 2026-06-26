@@ -109,7 +109,7 @@
     "/api/v1/payment/methods": {
       "get": {
         "summary": "List payment methods",
-        "responses": { "200": { "description": "Payment methods retrieved" } }
+        "responses": { "200": { "description": "Payment methods retrieved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiSuccess" } } } } }
       }
     },
     "/api/v1/payments": {
@@ -138,14 +138,14 @@
       "get": {
         "summary": "Get payment detail",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Payment retrieved" }, "404": { "description": "Not found" } }
+        "responses": { "200": { "description": "Payment retrieved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiSuccess" } } } }, "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } } }
       }
     },
     "/api/v1/payments/{id}/status": {
       "get": {
         "summary": "Get payment status",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Payment status retrieved" } }
+        "responses": { "200": { "description": "Payment status retrieved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiSuccess" } } } } }
       }
     },
     "/api/v1/payments/confirm": {
@@ -172,7 +172,7 @@
     "/api/v1/orders": {
       "get": {
         "summary": "List orders",
-        "responses": { "200": { "description": "Orders retrieved" } }
+        "responses": { "200": { "description": "Orders retrieved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiSuccess" } } } } }
       },
       "post": {
         "summary": "Create order directly or from confirmed checkout/payment",
@@ -204,7 +204,7 @@
       "get": {
         "summary": "Get order detail",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
-        "responses": { "200": { "description": "Order retrieved" }, "404": { "description": "Not found" } }
+        "responses": { "200": { "description": "Order retrieved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiSuccess" } } } }, "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } } }
       }
     },
     "/api/v1/orders/{id}/status": {
