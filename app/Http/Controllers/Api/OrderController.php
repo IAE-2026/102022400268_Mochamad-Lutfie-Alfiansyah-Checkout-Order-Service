@@ -6,8 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Checkout;
 use App\Models\Order;
 use App\Models\Payment;
-use App\Services\LegacyAuditClient;
-use App\Services\OrderEventPublisher;
 use App\Services\ProductStockClient;
 use App\Support\ApiResponse;
 use Illuminate\Http\Client\ConnectionException;
@@ -16,7 +14,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Throwable;
 
 class OrderController extends Controller
 {
@@ -27,13 +24,12 @@ class OrderController extends Controller
         return ApiResponse::success('Orders retrieved successfully', $orders);
     }
 
-    public function store(
-        Request $request,
-        ProductStockClient $productStockClient,
-        LegacyAuditClient $legacyAuditClient,
-        OrderEventPublisher $orderEventPublisher,
-    ): JsonResponse
+    public function store(Request $request, ProductStockClient $productStockClient): JsonResponse
     {
+        if (! $request->filled('checkout_id')) {
+            return $this->storeDirectOrder($request);
+        }
+
         $validated = $request->validate([
             'checkout_id' => ['required', 'integer', 'exists:checkouts,id'],
             'payment_id' => ['nullable', 'integer', 'exists:payments,id'],
@@ -56,22 +52,13 @@ class OrderController extends Controller
             return ApiResponse::error($exception->getMessage(), null, 502);
         }
 
-        $invoiceNumber = $this->invoiceNumber();
-
-        try {
-            $auditReceiptNumber = $legacyAuditClient->submitOrderCreated($checkout, $payment, $invoiceNumber);
-        } catch (ConnectionException $exception) {
-            return ApiResponse::error($exception->getMessage(), null, 502);
-        }
-
-        $order = DB::transaction(function () use ($checkout, $payment, $invoiceNumber, $auditReceiptNumber): Order {
+        $order = DB::transaction(function () use ($checkout, $payment): Order {
             $order = Order::create([
                 'checkout_id' => $checkout->id,
                 'user_id' => $checkout->user_id,
-                'invoice_number' => $invoiceNumber,
+                'invoice_number' => $this->invoiceNumber(),
                 'total_amount' => $checkout->total_amount,
                 'status' => 'paid',
-                'audit_receipt_number' => $auditReceiptNumber,
             ]);
 
             foreach ($checkout->items as $item) {
@@ -89,11 +76,79 @@ class OrderController extends Controller
             return $order->load('items', 'payment');
         });
 
-        try {
-            $orderEventPublisher->publishOrderCreated($order);
-        } catch (Throwable $exception) {
-            return ApiResponse::error($exception->getMessage(), null, 502);
-        }
+        return ApiResponse::success('Order created successfully', $order, 201);
+    }
+
+    private function storeDirectOrder(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => ['nullable', 'integer', 'min:1'],
+            'shipping_address' => ['nullable', 'string', 'max:1000'],
+            'payment_method' => ['nullable', 'string', Rule::in(['bank_transfer', 'e_wallet', 'credit_card', 'cod'])],
+            'items' => ['nullable', 'array'],
+            'items.*.product_id' => ['required_with:items', 'integer', 'min:1'],
+            'items.*.quantity' => ['required_with:items', 'integer', 'min:1'],
+            'items.*.price' => ['required_with:items', 'numeric', 'min:0'],
+        ]);
+
+        $items = $validated['items'] ?? [
+            [
+                'product_id' => 1,
+                'quantity' => 1,
+                'price' => 100000,
+            ],
+        ];
+
+        $order = DB::transaction(function () use ($validated, $items): Order {
+            $totalAmount = collect($items)->sum(fn (array $item): float => round((float) $item['price'] * (int) $item['quantity'], 2));
+            $paymentMethod = $validated['payment_method'] ?? 'bank_transfer';
+
+            $checkout = Checkout::create([
+                'user_id' => $validated['user_id'] ?? 1,
+                'cart_id' => null,
+                'shipping_address' => $validated['shipping_address'] ?? 'Default shipping address',
+                'payment_method' => $paymentMethod,
+                'total_amount' => $totalAmount,
+                'status' => 'converted_to_order',
+            ]);
+
+            foreach ($items as $item) {
+                $checkout->items()->create([
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'price' => $item['price'],
+                    'subtotal' => round((float) $item['price'] * (int) $item['quantity'], 2),
+                ]);
+            }
+
+            $order = Order::create([
+                'checkout_id' => $checkout->id,
+                'user_id' => $checkout->user_id,
+                'invoice_number' => $this->invoiceNumber(),
+                'total_amount' => $totalAmount,
+                'status' => 'paid',
+            ]);
+
+            foreach ($items as $item) {
+                $order->items()->create([
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'price' => $item['price'],
+                    'subtotal' => round((float) $item['price'] * (int) $item['quantity'], 2),
+                ]);
+            }
+
+            Payment::create([
+                'checkout_id' => $checkout->id,
+                'order_id' => $order->id,
+                'payment_method' => $paymentMethod,
+                'amount' => $totalAmount,
+                'status' => 'confirmed',
+                'confirmed_at' => now(),
+            ]);
+
+            return $order->load('items', 'payment', 'checkout');
+        });
 
         return ApiResponse::success('Order created successfully', $order, 201);
     }

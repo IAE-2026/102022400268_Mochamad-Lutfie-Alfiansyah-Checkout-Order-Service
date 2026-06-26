@@ -5,7 +5,6 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -23,9 +22,6 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'sso_provider',
-        'sso_subject',
-        'sso_claims',
     ];
 
     /**
@@ -48,17 +44,6 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
-            'sso_claims' => 'array',
         ];
-    }
-
-    public function roles(): BelongsToMany
-    {
-        return $this->belongsToMany(Role::class)->withTimestamps();
-    }
-
-    public function hasAnyRole(array $roles): bool
-    {
-        return $this->roles->pluck('code')->intersect($roles)->isNotEmpty();
     }
 }

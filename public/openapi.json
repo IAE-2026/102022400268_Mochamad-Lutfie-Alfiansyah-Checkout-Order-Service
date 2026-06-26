@@ -175,17 +175,23 @@
         "responses": { "200": { "description": "Orders retrieved" } }
       },
       "post": {
-        "summary": "Create order from confirmed checkout/payment",
+        "summary": "Create order directly or from confirmed checkout/payment",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["checkout_id"],
                 "properties": {
-                  "checkout_id": { "type": "integer", "example": 1 },
-                  "payment_id": { "type": "integer", "nullable": true, "example": 1 }
+                  "checkout_id": { "type": "integer", "nullable": true, "example": 1 },
+                  "payment_id": { "type": "integer", "nullable": true, "example": 1 },
+                  "user_id": { "type": "integer", "example": 1 },
+                  "shipping_address": { "type": "string", "example": "Jl. Telekomunikasi No. 1, Bandung" },
+                  "payment_method": { "type": "string", "example": "bank_transfer" },
+                  "items": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/CheckoutItemInput" }
+                  }
                 }
               }
             }
@@ -237,6 +243,48 @@
                 "required": ["query"],
                 "properties": {
                   "query": { "type": "string", "example": "query { order(id: 1) { id invoice_number status total_amount } }" },
+                  "variables": { "type": "object", "nullable": true }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "GraphQL result" }, "400": { "description": "GraphQL error" } }
+      }
+    },
+    "/api/v1/graphql": {
+      "post": {
+        "summary": "GraphQL order query alias under v1",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                  "query": { "type": "string", "example": "{ __schema { queryType { name } } }" },
+                  "variables": { "type": "object", "nullable": true }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "GraphQL result" }, "400": { "description": "GraphQL error" } }
+      }
+    },
+    "/graphql": {
+      "post": {
+        "summary": "GraphQL order query root alias",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                  "query": { "type": "string", "example": "{ __schema { queryType { name } } }" },
                   "variables": { "type": "object", "nullable": true }
                 }
               }

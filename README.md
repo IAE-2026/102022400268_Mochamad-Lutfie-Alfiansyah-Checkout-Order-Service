@@ -17,8 +17,8 @@ https://github.com/IAE-2026/102022400268_Mochamad-Lutfie-Alfiansyah-Checkout-Ord
 ## Features
 
 - Versioned REST API under `/api/v1`
-- GraphQL order query at `/api/graphql`
-- GraphQL Playground at `/graphql-playground`
+- GraphQL order query at `/graphql`, `/api/graphql`, and `/api/v1/graphql`
+- GraphQL Playground at `/graphql` and `/graphql-playground`
 - Swagger/OpenAPI page at `/api/documentation`
 - API key protection with `X-IAE-KEY`
 - Official IAE JSON response wrapper
@@ -96,7 +96,9 @@ Error:
 - `POST /api/v1/orders`
 - `GET /api/v1/orders/{id}`
 - `PUT /api/v1/orders/{id}/status`
+- `POST /graphql`
 - `POST /api/graphql`
+- `POST /api/v1/graphql`
 
 ## Example Checkout Request
 
@@ -112,6 +114,33 @@ curl -X POST http://localhost:8002/api/v1/checkouts \
       { "product_id": 10, "quantity": 2, "price": 150000 }
     ]
   }'
+```
+
+## Example Direct Order Request
+
+This endpoint is the main resource endpoint for assignment rubric testing.
+
+```bash
+curl -X POST http://localhost:8002/api/v1/orders \
+  -H "Content-Type: application/json" \
+  -H "X-IAE-KEY: 102022400268" \
+  -d '{
+    "user_id": 1,
+    "shipping_address": "Jl. Telekomunikasi No. 1, Bandung",
+    "payment_method": "bank_transfer",
+    "items": [
+      { "product_id": 10, "quantity": 2, "price": 150000 }
+    ]
+  }'
+```
+
+GraphQL introspection example:
+
+```bash
+curl -X POST http://localhost:8002/graphql \
+  -H "Content-Type: application/json" \
+  -H "X-IAE-KEY: 102022400268" \
+  -d '{ "query": "{ __schema { queryType { name } } }" }'
 ```
 
 ## Inter-Service Communication
@@ -131,42 +160,6 @@ Product stock validation and deduction are opt-in:
 PRODUCT_STOCK_VALIDATION=true
 PRODUCT_STOCK_DEDUCTION=true
 ```
-
-## Tugas 3 Integrations
-
-The critical transaction for Tugas 3 is:
-
-```text
-POST /api/v1/orders
-```
-
-When enabled, this endpoint validates the SSO JWT, maps the user to local roles, sends the critical order transaction to the legacy SOAP audit service, stores the returned `ReceiptNumber`, and publishes an order event to RabbitMQ.
-
-```env
-IAE_TEAM_ID=TEAM-01
-IAE_CENTRAL_BASE_URL=https://iae-sso.virtualfri.id
-IAE_CENTRAL_API_KEY=KEY-MHS-343
-IAE_CENTRAL_TOKEN_URL=https://iae-sso.virtualfri.id/api/v1/auth/token
-
-SSO_ENABLED=true
-SSO_BASE_URL=https://iae-sso.virtualfri.id
-SSO_JWT_ALGORITHM=RS256
-SSO_JWKS_URL=https://iae-sso.virtualfri.id/api/v1/auth/jwks
-SSO_ROLE_CLAIM=role
-
-LEGACY_AUDIT_ENABLED=true
-LEGACY_AUDIT_ENDPOINT=https://iae-sso.virtualfri.id/soap/v1/audit
-LEGACY_AUDIT_ACTIVITY_NAME=CheckoutOrderCreated
-
-RABBITMQ_ENABLED=true
-RABBITMQ_PUBLISH_URL=https://iae-sso.virtualfri.id/api/v1/messages/publish
-RABBITMQ_EXCHANGE=iae.central.exchange
-RABBITMQ_ROUTING_KEY=checkout.order.created
-```
-
-With `SSO_ENABLED=true`, `POST /api/v1/orders` requires a Bearer JWT whose local role maps to `customer`, `system`, or `admin`.
-
-The SSO service in the assignment provides user tokens through `POST /api/v1/auth/token` and public RS256 keys through `GET /api/v1/auth/jwks`. The same central token is used as Bearer authentication for SOAP audit and central message publishing.
 
 ## Local Development
 

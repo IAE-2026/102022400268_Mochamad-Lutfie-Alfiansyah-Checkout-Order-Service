@@ -15,7 +15,6 @@ class Order extends Model
         'invoice_number',
         'total_amount',
         'status',
-        'audit_receipt_number',
     ];
 
     protected function casts(): array

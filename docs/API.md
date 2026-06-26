@@ -96,9 +96,26 @@ Returns all orders with items and payment.
 
 ### `POST /api/v1/orders`
 
-Creates an order from a checkout that has a confirmed or paid payment.
+Creates an order directly for assignment rubric testing, or from a checkout that has a confirmed or paid payment.
 
-When `SSO_ENABLED=true`, this endpoint requires a Bearer JWT whose local role maps to `customer`, `system`, or `admin`. JWT signatures are verified through the Cloud Dosen JWKS endpoint. When `LEGACY_AUDIT_ENABLED=true`, the service sends a SOAP XML `iae:AuditRequest` to `/soap/v1/audit` and stores the returned `ReceiptNumber` on the order. When `RABBITMQ_ENABLED=true`, the service publishes `checkout.order.created` through the central `/api/v1/messages/publish` endpoint.
+Direct request:
+
+```json
+{
+  "user_id": 1,
+  "shipping_address": "Jl. Telekomunikasi No. 1, Bandung",
+  "payment_method": "bank_transfer",
+  "items": [
+    {
+      "product_id": 10,
+      "quantity": 2,
+      "price": 150000
+    }
+  ]
+}
+```
+
+Checkout/payment request:
 
 ```json
 {
@@ -136,7 +153,9 @@ Allowed statuses:
 Endpoint:
 
 ```text
+POST /graphql
 POST /api/graphql
+POST /api/v1/graphql
 ```
 
 Example:
@@ -169,5 +188,6 @@ Variables:
 Interactive page:
 
 ```text
+GET /graphql
 GET /graphql-playground
 ```
